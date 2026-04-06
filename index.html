@@ -4,13 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Random Data Generator</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230071e3'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-size='28' font-family='Arial' fill='white'%3ERG%3C/text%3E%3C/svg%3E" />
     <link rel="stylesheet" href="main.css" />
   </head>
   <body>
     <div class="app">
       <header class="app-header">
         <h1>Random Data Generator</h1>
-        <p class="app-subtitle">Generate unique random identifiers with custom formatting</p>
+        <p class="app-subtitle">Generate random identifiers with configurable format and quantity</p>
       </header>
 
       <main>
@@ -19,6 +20,10 @@
             <div class="field">
               <label for="prefix">Prefix</label>
               <input type="text" id="prefix" placeholder="e.g. UA" value="UA" />
+            </div>
+            <div class="field field--length">
+              <label for="length">Middle Length</label>
+              <input type="number" id="length" min="1" max="24" value="8" />
             </div>
             <div class="field field--count">
               <label for="count">Count</label>
@@ -29,9 +34,10 @@
               <input type="text" id="suffix" placeholder="e.g. -X" value="" />
             </div>
           </div>
+          <p class="config-hint">The middle part uses digits 0-9. Large batches are generated progressively to keep the page responsive.</p>
           <button id="btn-generate" class="btn btn--primary">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.47"/></svg>
-            Generate
+            <span id="btn-generate-label">Generate</span>
           </button>
         </section>
 
@@ -46,7 +52,8 @@
               <span id="btn-copy-label">Copy All</span>
             </button>
           </div>
-          <div id="data" class="data-list"></div>
+          <p id="status" class="status" aria-live="polite"></p>
+          <pre id="data" class="data-output"></pre>
         </section>
       </main>
     </div>

@@ -1,76 +1,210 @@
 const CHARSET = '0123456789';
-const POSITIONS = 8;
-const TOTAL_COMBINATIONS = CHARSET.length ** POSITIONS;
+const MAX_COUNT = 100000;
+const MIN_LENGTH = 1;
+const MAX_LENGTH = 24;
+const YIELD_EVERY = 2000;
 
-function generateItem(prefix, suffix) {
-  let core = '';
-  for (let i = 0; i < POSITIONS; i++) {
-    core += CHARSET.charAt(Math.floor(Math.random() * CHARSET.length));
+const elements = {
+  prefix: document.getElementById('prefix'),
+  length: document.getElementById('length'),
+  count: document.getElementById('count'),
+  suffix: document.getElementById('suffix'),
+  generateButton: document.getElementById('btn-generate'),
+  generateLabel: document.getElementById('btn-generate-label'),
+  copyButton: document.getElementById('btn-copy'),
+  copyLabel: document.getElementById('btn-copy-label'),
+  results: document.getElementById('results'),
+  resultsCount: document.getElementById('results-count'),
+  probability: document.getElementById('probability'),
+  status: document.getElementById('status'),
+  data: document.getElementById('data')
+};
+
+const state = {
+  isGenerating: false,
+  output: ''
+};
+
+function clampNumber(value, min, max, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed)) {
+    return fallback;
   }
-  return prefix + core + suffix;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function getConfig() {
+  const count = clampNumber(elements.count.value, 1, MAX_COUNT, 20);
+  const length = clampNumber(elements.length.value, MIN_LENGTH, MAX_LENGTH, 8);
+
+  elements.count.value = String(count);
+  elements.length.value = String(length);
+
+  return {
+    prefix: elements.prefix.value,
+    suffix: elements.suffix.value,
+    count,
+    length
+  };
+}
+
+function getTotalCombinations(length) {
+  return CHARSET.length ** length;
+}
+
+function generateItem(prefix, suffix, length) {
+  let middle = '';
+  for (let index = 0; index < length; index += 1) {
+    middle += CHARSET.charAt(Math.floor(Math.random() * CHARSET.length));
+  }
+  return prefix + middle + suffix;
 }
 
 function duplicateProbability(combinations, draws) {
-  if (draws <= 1) return 0;
-  let p = 1;
-  const limit = Math.min(draws, combinations);
-  for (let i = 1; i < limit; i++) {
-    p *= (combinations - i) / combinations;
+  if (draws <= 1) {
+    return {
+      probability: 0,
+      logNoDuplicateProbability: 0,
+      isEffectivelyCertain: false
+    };
   }
-  return (1 - p) * 100;
-}
-
-function formatProb(p) {
-  if (p < 0.0001) return '< 0.0001%';
-  if (p >= 99.9999) return '~100%';
-  return p.toPrecision(3) + '%';
-}
-
-function generate() {
-  const prefix = document.getElementById('prefix').value;
-  const suffix = document.getElementById('suffix').value;
-  const count = Math.max(1, Math.min(100000, parseInt(document.getElementById('count').value, 10) || 1));
-
-  const items = [];
-  for (let i = 0; i < count; i++) {
-    items.push(generateItem(prefix, suffix));
+  if (!Number.isFinite(combinations) || combinations <= 0) {
+    return {
+      probability: 0,
+      logNoDuplicateProbability: 0,
+      isEffectivelyCertain: false
+    };
+  }
+  if (draws > combinations) {
+    return {
+      probability: 100,
+      logNoDuplicateProbability: Number.NEGATIVE_INFINITY,
+      isEffectivelyCertain: true
+    };
   }
 
-  // Render
-  const dataEl = document.getElementById('data');
-  dataEl.textContent = '';
-  items.forEach(item => {
-    const div = document.createElement('div');
-    div.className = 'data-item';
-    div.textContent = item;
-    dataEl.appendChild(div);
+  let logNoDuplicateProbability = 0;
+  for (let index = 0; index < draws; index += 1) {
+    logNoDuplicateProbability += Math.log1p(-index / combinations);
+  }
+
+  const probability = -Math.expm1(logNoDuplicateProbability) * 100;
+  return {
+    probability,
+    logNoDuplicateProbability,
+    isEffectivelyCertain: logNoDuplicateProbability < Math.log(Number.EPSILON)
+  };
+}
+
+function formatProbability(probabilityData) {
+  if (probabilityData.probability === 0) {
+    return '0%';
+  }
+
+  if (probabilityData.isEffectivelyCertain) {
+    return '> 99.99999999999997%';
+  }
+
+  const preciseProbability = probabilityData.probability.toPrecision(15);
+  if (preciseProbability.includes('e')) {
+    return preciseProbability + '%';
+  }
+
+  return preciseProbability.replace(/\.0+$/, '').replace(/(\.\d*?)0+$/, '$1') + '%';
+}
+
+function waitForFrame() {
+  return new Promise(resolve => {
+    window.requestAnimationFrame(() => resolve());
   });
+}
 
-  // Stats
-  document.getElementById('results-count').textContent = count.toLocaleString() + ' items';
-  const prob = duplicateProbability(TOTAL_COMBINATIONS, count);
-  document.getElementById('probability').textContent = 'Duplicate probability: ' + formatProb(prob);
-
-  document.getElementById('results').hidden = false;
-  resetCopyButton();
+function setGeneratingState(isGenerating) {
+  state.isGenerating = isGenerating;
+  elements.generateButton.disabled = isGenerating;
+  elements.copyButton.disabled = isGenerating || !state.output;
+  elements.generateLabel.textContent = isGenerating ? 'Generating...' : 'Generate';
 }
 
 function resetCopyButton() {
-  const label = document.getElementById('btn-copy-label');
-  label.textContent = 'Copy All';
-  document.getElementById('btn-copy').classList.remove('btn--copied');
+  elements.copyLabel.textContent = 'Copy All';
+  elements.copyButton.classList.remove('btn--copied');
 }
 
-function copyAll() {
-  const items = [...document.querySelectorAll('.data-item')].map(el => el.textContent);
-  navigator.clipboard.writeText(items.join('\n')).then(() => {
-    const label = document.getElementById('btn-copy-label');
-    const btn = document.getElementById('btn-copy');
-    label.textContent = 'Copied!';
-    btn.classList.add('btn--copied');
-    setTimeout(resetCopyButton, 2000);
-  });
+function setStatus(message) {
+  elements.status.textContent = message;
 }
 
-document.getElementById('btn-generate').addEventListener('click', generate);
-document.getElementById('btn-copy').addEventListener('click', copyAll);
+async function generate() {
+  if (state.isGenerating) {
+    return;
+  }
+
+  const config = getConfig();
+  const items = new Array(config.count);
+
+  state.output = '';
+  elements.results.hidden = false;
+  elements.data.textContent = '';
+  elements.resultsCount.textContent = config.count.toLocaleString() + ' items';
+  elements.probability.textContent = 'Duplicate probability: calculating...';
+  resetCopyButton();
+  setGeneratingState(true);
+
+  for (let start = 0; start < config.count; start += YIELD_EVERY) {
+    const end = Math.min(start + YIELD_EVERY, config.count);
+
+    for (let index = start; index < end; index += 1) {
+      items[index] = generateItem(config.prefix, config.suffix, config.length);
+    }
+
+    setStatus('Generating ' + end.toLocaleString() + ' of ' + config.count.toLocaleString() + '...');
+
+    if (end < config.count) {
+      await waitForFrame();
+    }
+  }
+
+  state.output = items.join('\n');
+  elements.data.textContent = state.output;
+
+  const combinations = getTotalCombinations(config.length);
+  const probabilityData = duplicateProbability(combinations, config.count);
+  elements.probability.textContent = 'Duplicate probability: ' + formatProbability(probabilityData);
+  setStatus('Generated ' + config.count.toLocaleString() + ' items with a ' + config.length + '-digit middle part.');
+
+  setGeneratingState(false);
+}
+
+function fallbackCopy(text) {
+  const textArea = document.createElement('textarea');
+  textArea.value = text;
+  textArea.setAttribute('readonly', 'true');
+  textArea.style.position = 'fixed';
+  textArea.style.opacity = '0';
+  document.body.appendChild(textArea);
+  textArea.select();
+  document.execCommand('copy');
+  document.body.removeChild(textArea);
+}
+
+async function copyAll() {
+  if (!state.output) {
+    return;
+  }
+
+  try {
+    await navigator.clipboard.writeText(state.output);
+  } catch (error) {
+    fallbackCopy(state.output);
+  }
+
+  elements.copyLabel.textContent = 'Copied!';
+  elements.copyButton.classList.add('btn--copied');
+  setTimeout(resetCopyButton, 2000);
+}
+
+elements.generateButton.addEventListener('click', generate);
+elements.copyButton.addEventListener('click', copyAll);
+elements.copyButton.disabled = true;
+setStatus('Choose your settings and click Generate.');
